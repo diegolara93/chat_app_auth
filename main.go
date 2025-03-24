@@ -29,7 +29,26 @@ func serverSignIn(c echo.Context) error {
 	http.ServeFile(w, r, "signin.html")
 	return nil
 }
+
+func serveHome(c echo.Context) error {
+	r := c.Request()
+	w := c.Response()
+	log.Print(r.URL)
+	if r.URL.Path != "/" {
+		http.Error(w, "404 not found", http.StatusNotFound)
+		return nil
+	}
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed please send a GET request", http.StatusMethodNotAllowed)
+		return nil
+	}
+	http.ServeFile(w, r, "index.html")
+	return nil
+}
+
 func main() {
+	hub := newHub()
+	go hub.run()
 	err := godotenv.Load()
 	if err != nil {
 		slog.Error("Error loading .env file")
@@ -58,11 +77,11 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// e.GET("/", serveHome)
-	// e.GET("/ws", func(c echo.Context) error {
-	// 	serveWs(hub, c)
-	// 	return nil
-	// })
+	e.GET("/", serveHome)
+	e.GET("/ws", func(c echo.Context) error {
+		serveWs(hub, c)
+		return nil
+	})
 	e.GET("/signin", serverSignIn)
 	e.POST("/register", func(c echo.Context) error { return registerHandler(c, db) })
 	e.POST("/login", func(c echo.Context) error { return loginHandler(c, db) })
