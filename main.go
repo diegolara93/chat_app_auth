@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,21 @@ import (
 	"gorm.io/gorm"
 )
 
+func serverSignIn(c echo.Context) error {
+	r := c.Request()
+	w := c.Response()
+	log.Print(r.URL)
+	if r.URL.Path != "/signin" {
+		http.Error(w, "404 not found", http.StatusNotFound)
+		return nil
+	}
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed please send a GET request", http.StatusMethodNotAllowed)
+		return nil
+	}
+	http.ServeFile(w, r, "signin.html")
+	return nil
+}
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -23,7 +39,7 @@ func main() {
 	if secretKey != "" {
 		jwtSecret = []byte(secretKey)
 	} else {
-		slog.Warn("JWT_SECRET not found in environment, using default (INSECURE)")
+		slog.Warn("JWT_SECRET not found in env")
 	}
 
 	dsn := os.Getenv("DB_URL")
@@ -47,7 +63,7 @@ func main() {
 	// 	serveWs(hub, c)
 	// 	return nil
 	// })
-	// e.GET("/signin", serverSignIn)
+	e.GET("/signin", serverSignIn)
 	e.POST("/register", func(c echo.Context) error { return registerHandler(c, db) })
 	e.POST("/login", func(c echo.Context) error { return loginHandler(c, db) })
 

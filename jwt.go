@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrAuth   = errors.New("auth error")
-	jwtSecret = []byte("your-secret-key")
+	jwtSecret = []byte("jwt-secret-key")
 )
 
 type Claims struct {
