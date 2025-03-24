@@ -79,7 +79,7 @@ func main() {
 
 	e.GET("/", serveHome)
 	e.GET("/ws", func(c echo.Context) error {
-		serveWs(hub, c)
+		serveWs(hub, c, db)
 		return nil
 	})
 	e.GET("/signin", serverSignIn)

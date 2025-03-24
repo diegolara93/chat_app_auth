@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 )
 
 const (
@@ -42,6 +43,8 @@ type Client struct {
 
 	// Buffered channel of outbound messages
 	send chan []byte
+	// A user pointer to allow mutiple sockets for a single user
+	user *User
 }
 
 // readPump pumps messages from the ws connection to the hub
@@ -96,6 +99,11 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
+			if c.user != nil {
+				w.Write([]byte(c.user.Username))
+				w.Write([]byte(":"))
+			}
+
 			w.Write(message)
 
 			// Add queued chat messages to the current ws message
@@ -118,17 +126,26 @@ func (c *Client) writePump() {
 	}
 }
 
-func serveWs(hub *Hub, c echo.Context) {
+func serveWs(hub *Hub, c echo.Context, db *gorm.DB) error {
 	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		log.Println(err)
-		return
+		return err
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	client.hub.register <- client
+	client := &Client{}
+	if err = Authorize(c, db); err != nil {
+		client = &Client{hub: hub, conn: conn, send: make(chan []byte, 256), user: nil}
+		client.hub.register <- client
+	} else {
+		username := GetUsername(c)
+		user := &User{Username: username}
+		client = &Client{hub: hub, conn: conn, send: make(chan []byte, 256), user: user}
+		client.hub.register <- client
+	}
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines
 	go client.writePump()
 	go client.readPump()
+	return nil
 }
