@@ -49,7 +49,6 @@ func loginHandler(c echo.Context, db *gorm.DB) error {
 	})
 }
 
-// Updated logout handler - just clear the cookie
 func logoutHandler(c echo.Context, db *gorm.DB) error {
 	if err := Authorize(c, db); err != nil {
 		return err
@@ -93,7 +92,6 @@ func protectedHandler(c echo.Context, db *gorm.DB) error {
 	})
 }
 
-// Your register handler would mostly stay the same, but without the session and CSRF tokens
 func registerHandler(c echo.Context, db *gorm.DB) error {
 	if c.Request().Method != http.MethodPost {
 		return errors.New("not a POST request")
@@ -148,4 +146,32 @@ func registerHandler(c echo.Context, db *gorm.DB) error {
 	return c.JSON(http.StatusCreated, map[string]string{
 		"message": "User created successfully",
 	})
+}
+
+// these will be used later when I add the frontend
+
+func incrementMessagesSent(c echo.Context) error {
+	return nil
+}
+
+func deleteUser(c echo.Context) error {
+	return nil
+}
+
+func getUser(c echo.Context) error {
+	return nil
+}
+
+// these are the handlers for oauth
+
+func oAuthCallbackHandler(c echo.Context) error {
+	return nil
+}
+
+func oAuthLogoutHandler(c echo.Context) error {
+	return nil
+}
+
+func oAuthProviderHandler(c echo.Context) error {
+	return nil
 }

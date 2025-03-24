@@ -70,9 +70,6 @@ func main() {
 
 	db.AutoMigrate(&User{})
 
-	// hub := newHub()
-	// go hub.run()
-
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
