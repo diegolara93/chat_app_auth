@@ -151,6 +151,9 @@ func registerHandler(c echo.Context, db *gorm.DB) error {
 }
 
 func incrementMessagesSent(c echo.Context) error {
+	// check where the user sent the message and then increment by 1
+	// for total messages, and by 1 for the coin they sent the message about
+	// also check the # of messages to see if they got an achievement
 	return nil
 }
 
@@ -162,7 +165,18 @@ func getUserHandler(c echo.Context) error {
 	return nil
 }
 
-func getUserSongsHandler(c echo.Context) error {
+func getUserCoins(c echo.Context, db *gorm.DB) error {
+	// returns the users "favorited" coins TO THE MOON! HODL!
+	return nil
+}
+
+func userMostActiveCoins(e echo.Context, db *gorm.DB) error {
+	// returns coins the user has sent the most messages about
+	return nil
+}
+
+func getUserAchievements(c echo.Context, db *gorm.DB) error {
+	// returns the users achievements
 	return nil
 }
 
