@@ -44,7 +44,7 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20)))) // Limits to 20 requests per second using in-memory store
+	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20)))) // Limits to 20 requests per second per IP
 	e.Use(echoprometheus.NewMiddleware("chat_logging"))                                 // prometheus logging
 
 	go func() {
