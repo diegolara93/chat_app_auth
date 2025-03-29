@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -42,9 +43,13 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages
-	send chan []byte
-	// A user pointer to allow mutiple sockets for a single user
+	send chan ChatMessage
+
+	// A user pointer to allow multiple sockets for a single user
 	user *User
+
+	// The current room the client is in
+	currentRoom string
 }
 
 // readPump pumps messages from the ws connection to the hub
@@ -69,7 +74,27 @@ func (c *Client) readPump() {
 			break
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newLine, space, -1))
-		c.hub.broadcast <- message
+
+		// Try to parse as a ChatMessage
+		var chatMsg ChatMessage
+		if err := json.Unmarshal(message, &chatMsg); err != nil {
+			// If parsing fails, create a simple message with the content
+			chatMsg = ChatMessage{
+				Content: string(message),
+			}
+		}
+
+		// Set username if available
+		if c.user != nil {
+			chatMsg.Username = c.user.Username
+		}
+
+		// If no room specified in message but client is in a room, use that
+		if chatMsg.RoomID == "" && c.currentRoom != "" {
+			chatMsg.RoomID = c.currentRoom
+		}
+
+		c.hub.broadcast <- chatMsg
 	}
 }
 
@@ -78,7 +103,6 @@ func (c *Client) readPump() {
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this specific goroutine.
-
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -99,19 +123,26 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
-			if c.user != nil {
-				w.Write([]byte(c.user.Username))
-				w.Write([]byte(":"))
+
+			// Convert the ChatMessage to JSON
+			messageJSON, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("Error marshaling message: %v", err)
+				return
 			}
 
-			w.Write(message)
+			w.Write(messageJSON)
 
 			// Add queued chat messages to the current ws message
-
 			n := len(c.send)
 			for i := 0; i < n; i++ {
+				nextMsg := <-c.send
+				nextMsgJSON, err := json.Marshal(nextMsg)
+				if err != nil {
+					continue
+				}
 				w.Write(newLine)
-				w.Write(<-c.send)
+				w.Write(nextMsgJSON)
 			}
 
 			if err := w.Close(); err != nil {
@@ -126,21 +157,60 @@ func (c *Client) writePump() {
 	}
 }
 
+// joinRoom makes the client join a chat room
+func (c *Client) joinRoom(roomID string) {
+	// If client is already in a room, leave it first
+	if c.currentRoom != "" {
+		c.leaveRoom(c.currentRoom)
+	}
+
+	// Join the new room
+	c.hub.joinRoom <- &ClientRoomAction{
+		Client: c,
+		RoomID: roomID,
+	}
+}
+
+// leaveRoom makes the client leave a chat room
+func (c *Client) leaveRoom(roomID string) {
+	c.hub.leaveRoom <- &ClientRoomAction{
+		Client: c,
+		RoomID: roomID,
+	}
+}
+
 func serveWs(hub *Hub, c echo.Context, db *gorm.DB) error {
 	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
-	client := &Client{}
-	if err = Authorize(c, db); err != nil {
-		client = &Client{hub: hub, conn: conn, send: make(chan []byte, 256), user: nil}
-		client.hub.register <- client
-	} else {
+
+	// Get optional room ID from query params
+	roomID := c.QueryParam("room_id")
+
+	client := &Client{
+		hub:         hub,
+		conn:        conn,
+		send:        make(chan ChatMessage, 256),
+		currentRoom: roomID,
+		user:        nil,
+	}
+
+	// Check for authentication
+	if err = Authorize(c, db); err == nil {
 		username := GetUsername(c)
-		user := &User{Username: username}
-		client = &Client{hub: hub, conn: conn, send: make(chan []byte, 256), user: user}
-		client.hub.register <- client
+		var user User
+		if err := db.Where("username = ?", username).First(&user).Error; err == nil {
+			client.user = &user
+		}
+	}
+
+	client.hub.register <- client
+
+	// Join room if specified
+	if roomID != "" {
+		client.joinRoom(roomID)
 	}
 
 	// Allow collection of memory referenced by the caller by doing all work in

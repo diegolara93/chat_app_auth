@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .room-header {
+            background-color: #f5f5f5;
+            padding: 10px 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .room-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .participants {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .message-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            max-width: 70%;
+        }
+        
+        .message .username {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .message .content {
+            word-break: break-word;
+        }
+        
+        .message-form {
+            display: flex;
+        }
+        
+        .message-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        
+        .send-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .send-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .password-form {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        
+        /* System messages */
+        .system-message {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="room-header">
+        <div class="room-info">
+            <h2 id="room-name">Chat Room</h2>
+            <div class="participants" id="participant-count"></div>
+        </div>
+    </div>
+    
+    <div id="password-form" class="password-form" style="display: none;">
+        <h3>This room is password protected</h3>
+        <div class="message-form">
+            <input type="password" id="room-password" class="message-input" placeholder="Enter room password">
+            <button id="submit-password" class="send-button">Join</button>
+        </div>
+    </div>
+    
+    <div id="chat-container" class="chat-container" style="display: none;">
+        <div id="message-container" class="message-container"></div>
+        
+        <form id="message-form" class="message-form">
+            <input type="text" id="message-input" class="message-input" placeholder="Type your message...">
+            <button type="submit" id="send-button" class="send-button">Send</button>
+        </form>
+    </div>
+    
+    <script>
+        // The roomID will be replaced by the server when serving this template
+        const roomID = "{{.RoomID}}";
+        let conn;
+        let roomInfo;
+        
+        // Check room info and handle password if needed
+        fetch('/rooms/' + roomID)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showSystemMessage('Error: ' + data.error);
+                    return;
+                }
+                
+                roomInfo = data;
+                document.getElementById('room-name').textContent = data.room.name;
+                updateParticipantCount(data.active_users, data.room.max_participants);
+                
+                if (data.room.has_password) {
+                    // Show password form
+                    document.getElementById('password-form').style.display = 'block';
+                    
+                    document.getElementById('submit-password').addEventListener('click', function() {
+                        joinRoom(document.getElementById('room-password').value);
+                    });
+                } else {
+                    // No password, join directly
+                    joinRoom();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showSystemMessage('Error loading room information');
+            });
+            
+        function joinRoom(password = '') {
+            const formData = new FormData();
+            if (password) {
+                formData.append('password', password);
+            }
+            
+            fetch('/rooms/' + roomID + '/join', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showSystemMessage('Error: ' + data.error);
+                    return;
+                }
+                
+                // Hide password form if it was shown
+                document.getElementById('password-form').style.display = 'none';
+                
+                // Show chat container
+                document.getElementById('chat-container').style.display = 'flex';
+                
+                // Connect WebSocket
+                connectWebSocket();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showSystemMessage('Error joining room');
+            });
+        }
+        
+        function connectWebSocket() {
+            // Create WebSocket connection
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            conn = new WebSocket(wsProtocol + '//' + window.location.host + '/ws?room_id=' + roomID);
+            
+            conn.onopen = function() {
+                // Connection established
+                showSystemMessage('Connected to chat');
+                document.getElementById('send-button').disabled = false;
+            };
+            
+            conn.onclose = function() {
+                showSystemMessage('Disconnected from chat');
+                document.getElementById('send-button').disabled = true;
+            };
+            
+            conn.onmessage = function(evt) {
+                try {
+                    const messages = evt.data.split('\n');
+                    for (let i = 0; i < messages.length; i++) {
+                        const data = JSON.parse(messages[i]);
+                        displayMessage(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error, evt.data);
+                    // Try to display as plain text if JSON parsing fails
+                    displayMessage({ content: evt.data });
+                }
+            };
+        }
+        
+        document.getElementById('message-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const messageInput = document.getElementById('message-input');
+            const message = messageInput.value.trim();
+            
+            if (message && conn) {
+                // Create message object
+                const messageObj = {
+                    content: message,
+                    roomID: roomID
+                };
+                
+                conn.send(JSON.stringify(messageObj));
+                messageInput.value = '';
+            }
+        });
+        
+        function displayMessage(message) {
+            const messageContainer = document.getElementById('message-container');
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message';
+            
+            let html = '';
+            if (message.username) {
+                html += '<div class="username">' + escapeHtml(message.username) + '</div>';
+            }
+            
+            html += '<div class="content">' + escapeHtml(message.content) + '</div>';
+            messageElement.innerHTML = html;
+            
+            messageContainer.appendChild(messageElement);
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+        
+        function showSystemMessage(message) {
+            const messageContainer = document.getElementById('message-container');
+            const messageElement = document.createElement('div');
+            messageElement.className = 'system-message';
+            messageElement.textContent = message;
+            messageContainer.appendChild(messageElement);
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+        
+        function updateParticipantCount(active, max) {
+            document.getElementById('participant-count').textContent = active + '/' + max + ' participants';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Handle page unload - leave room
+        window.addEventListener('beforeunload', function() {
+            // Send leave request
+            navigator.sendBeacon('/rooms/' + roomID + '/leave');
+        });
+    </script>
+</body>
+</html> 

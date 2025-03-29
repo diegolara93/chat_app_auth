@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 30px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #444;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .auth-status {
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .rooms-list {
+            margin-top: 20px;
+        }
+        .room-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .room-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chat App</h1>
+        
+        <div id="auth-status" class="auth-status">
+            Checking authentication status...
+        </div>
+        
+        <div class="card">
+            <h2>Chat Rooms</h2>
+            <p>Create a new chat room or join an existing one:</p>
+            <a href="/create-room" class="btn">Create New Room</a>
+            <a href="#" id="list-rooms-btn" class="btn">View Available Rooms</a>
+            
+            <div id="rooms-list" class="rooms-list" style="display: none;">
+                <h3>Available Rooms</h3>
+                <div id="rooms-container">
+                    Loading rooms...
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Authentication</h2>
+            <p>Sign in to create and join private rooms:</p>
+            <div id="auth-buttons">
+                <a href="/signin" class="btn">Sign In</a>
+                <a href="/oauthsignup" class="btn">Sign Up</a>
+                <a href="/auth/google" class="btn">Sign In with Google</a>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Check if user is authenticated
+        fetch('/api/profile', {
+            credentials: 'include'
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            throw new Error('Not authenticated');
+        })
+        .then(data => {
+            document.getElementById('auth-status').textContent = 'Logged in as: ' + data.username;
+            
+            // Change auth buttons to logout
+            document.getElementById('auth-buttons').innerHTML = '<a href="#" id="logout-btn" class="btn">Logout</a>';
+            
+            // Add logout functionality
+            document.getElementById('logout-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                fetch('/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                })
+                .then(response => response.json())
+                .then(() => {
+                    window.location.reload();
+                });
+            });
+        })
+        .catch(() => {
+            document.getElementById('auth-status').textContent = 'Not logged in';
+        });
+        
+        // Handle rooms listing
+        document.getElementById('list-rooms-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const roomsList = document.getElementById('rooms-list');
+            
+            if (roomsList.style.display === 'none') {
+                roomsList.style.display = 'block';
+                
+                fetch('/rooms')
+                .then(response => response.json())
+                .then(rooms => {
+                    const container = document.getElementById('rooms-container');
+                    
+                    if (rooms.length === 0) {
+                        container.innerHTML = '<p>No rooms available. Create one!</p>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    rooms.forEach(room => {
+                        html += '<div class="room-item">';
+                        html += '<strong>' + room.name + '</strong> ';
+                        if (room.has_password) {
+                            html += '🔒 ';
+                        }
+                        html += '<a href="/chat/' + room.room_id + '" class="btn">Join</a>';
+                        html += '</div>';
+                    });
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('rooms-container').innerHTML = '<p>Error loading rooms</p>';
+                });
+            } else {
+                roomsList.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
